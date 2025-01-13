@@ -1,3 +1,5 @@
 .DS_Store
-assets
+assets/
 bin/
+debug/
+.idea
