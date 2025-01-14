@@ -32,12 +32,12 @@ func CompressFile(filePath string, outputFilePath string) error {
 	//	return err
 	//}
 	//defer debugFile.Close()
-	//for _, token := range compressed {
-	//	_, err := fmt.Fprintf(debugFile, "Offset: %d, Length: %d, Next: %c\n", token.Offset, token.Length, token.Next)
-	//	if err != nil {
-	//		return err
-	//	}
-	//}
+	for _, token := range compressed {
+		_, err := fmt.Printf("Literal: %d, Offset: %d, Length: %d, Next: %c\n", token.I, token.O, token.L, token.N)
+		if err != nil {
+			return err
+		}
+	}
 	fmt.Printf("Size of compressed tokens array %d\n", len(compressed))
 	_ = algo.WriteCompressedToFile(compressed, outputFilePath)
 

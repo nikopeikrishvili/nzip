@@ -3,18 +3,17 @@ package algo
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"os"
 )
 
 // LZ77Token represents a single token in the LZ77 encoded output
 type LZ77Token struct {
+	I bool // if its just character without match
 	O int  // How far back to look
 	L int  // Length of the match
 	N byte // The next unmatched byte
 }
 
-// Compress implements LZ77 compression
 func Compress(data []byte, windowSize int) []LZ77Token {
 	var tokens []LZ77Token
 	cursor := 0
@@ -41,17 +40,26 @@ func Compress(data []byte, windowSize int) []LZ77Token {
 			}
 		}
 
-		// Add a token for the match
-		next := byte(0)
-		if cursor+matchLength < len(data) {
-			next = data[cursor+matchLength]
+		// Determine if this is a literal or a match
+		if matchLength == 0 {
+			// No match: store as a literal
+			tokens = append(tokens, LZ77Token{
+				I: true, // Mark as literal
+				N: data[cursor],
+			})
+		} else {
+			// Match found: store as a match
+			next := byte(0)
+			if cursor+matchLength < len(data) {
+				next = data[cursor+matchLength]
+			}
+			tokens = append(tokens, LZ77Token{
+				I: false,       // Mark as match
+				O: matchOffset, // Offset
+				L: matchLength, // Length
+				N: next,        // Next unmatched byte
+			})
 		}
-
-		tokens = append(tokens, LZ77Token{
-			O: matchOffset,
-			L: matchLength,
-			N: next,
-		})
 
 		// Move the cursor forward
 		cursor += matchLength + 1
@@ -84,20 +92,29 @@ func max(a, b int) int {
 
 // WriteCompressedToFile writes compressed tokens to a file
 func WriteCompressedToFile(tokens []LZ77Token, filePath string) error {
-	fmt.Printf("Savin %d tokens to %s file\n", len(tokens), filePath)
-	// Create or open the file
 	file, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	// Create a gob encoder and write the tokens
 	encoder := gob.NewEncoder(file)
-	if err := encoder.Encode(tokens); err != nil {
-		return err
-	}
+	for _, token := range tokens {
+		if token.I {
+			// Write marker for literal
 
+			// Write the literal byte
+			if err := encoder.Encode(token.N); err != nil {
+				return err
+			}
+		} else {
+
+			//// Write the full token
+			//if err := encoder.Encode(token); err != nil {
+			//	return err
+			//}
+		}
+	}
 	return nil
 }
 func ReadCompressedFromFile(filePath string) ([]byte, error) {
@@ -114,34 +131,22 @@ func ReadCompressedFromFile(filePath string) ([]byte, error) {
 	if err := decoder.Decode(&tokens); err != nil {
 		return nil, err
 	}
+
+	// Reconstruct the original data
 	var result bytes.Buffer
-	//debugFile, err := os.Create("debug/dec.txt")
-	//if err != nil {
-	//	return nil, err
-	//}
-	//defer debugFile.Close()
 	for _, token := range tokens {
-		//_, err := fmt.Fprintf(debugFile, "Offset: %d, Length: %d, Next: %c\N", token.Offset, token.Length, token.Next)
-		//if err != nil {
-		//	return nil, err
-		//}
-
-		// Ensure offset is within bounds
-		if token.O > result.Len() {
-			return nil, fmt.Errorf("invalid token: Offset=%d exceeds current result length=%d", token.O, result.Len())
+		if token.I {
+			//	// If it's a literal, write the character directly
+			result.WriteByte(token.N)
+		} else {
+			// If it's a match, reconstruct from the sliding window
+			start := result.Len() - token.O
+			for i := 0; i < token.L; i++ {
+				result.WriteByte(result.Bytes()[start+i])
+			}
+			// Add the next unmatched byte
+			result.WriteByte(token.N)
 		}
-
-		// Copy referenced bytes
-		start := result.Len() - token.O
-		for i := 0; i < token.L; i++ {
-			b := result.Bytes()[start+i]
-			result.WriteByte(b)
-			//fmt.Fprintf(debugFile, "Reconstructed byte: 0x%x from sliding window\N", b)
-		}
-
-		// Add the next unmatched byte
-		result.WriteByte(token.N)
-		//fmt.Fprintf(debugFile, "Added Next byte: 0x%x\N", token.Next)
 	}
 
 	return result.Bytes(), nil
